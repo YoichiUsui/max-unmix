@@ -1,5 +1,21 @@
 library(shiny)
 library(shinyBS)
+make.initial.parameter.table <- function(parameters, component.numbers, component.names, scale, skewness.included) {
+  parameter.count <- if(skewness.included) 4 else 3
+  stopifnot(length(parameters) == length(component.numbers) * parameter.count)
+  parameter.matrix <- matrix(parameters, nrow = length(component.numbers), byrow = TRUE)
+  data.frame(
+    component_count = length(component.numbers),
+    component_number = component.numbers,
+    component_name = component.names,
+    scale = scale,
+    mean_coercivity_initial = parameter.matrix[, 1],
+    dispersion_initial = parameter.matrix[, 2],
+    relative_proportion_initial = parameter.matrix[, 3],
+    skewness_initial = if(skewness.included) parameter.matrix[, 4] else NA_real_,
+    skewness_included = skewness.included
+  )
+}
 shinyServer(function(input, output) {
  #### creating a reactive object containing user data ######
   dat <- reactive({
@@ -41,6 +57,18 @@ shinyServer(function(input, output) {
    
 ####### set up for click/drag to remove or add points ############
 vals <- reactiveValues(keeprows = rep(TRUE, 1))
+initial.fit.parameters <- reactiveVal(NULL)
+output$export.initial.parameters <- downloadHandler(
+  filename = function() {
+    paste0(input$file.name, "_initial_parameters.csv")
+  },
+  content = function(file) {
+    parameters <- initial.fit.parameters()
+    if(is.null(parameters))
+      stop("Run optimization before exporting initial fit parameters.")
+    write.csv(parameters, file, row.names = FALSE)
+  }
+)
 
 #observeEvent(dat(),{vals$keeprows <- rep(TRUE, nrow(dat()))}) ### problem now is that the observer here needs to watch something that doesn't reset very often
 
@@ -1066,6 +1094,17 @@ save_comp_6 <- reactive({   # saving component as reactive object that only gets
           optim(Pi,f)
         } 
       } 
+        selected.components <- which(c(input$comp1, input$comp2, input$comp3,
+                                       input$comp4, input$comp5, input$comp6))
+        component.names <- c(input$name1, input$name2, input$name3,
+                              input$name4, input$name5, input$name6)
+        initial.fit.parameters(make.initial.parameter.table(
+          parameters = Pi,
+          component.numbers = selected.components,
+          component.names = component.names[selected.components],
+          scale = input$scale,
+          skewness.included = input$skew.option == FALSE
+        ))
         fit.test = fitG(x=B.d,y=G.sm,Pi) #run function 
         
         Pf = fit.test$par
